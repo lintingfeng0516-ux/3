@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import yfinance as yf
 
 st.set_page_config(page_title="專業財報分析系統", layout="wide")
-st.title("📊 財報自動化解析系統 (數據完全修復版)")
+st.title("📊 財報自動化解析系統 ")
 
 with st.sidebar:
     st.header("1. 數據設定")
