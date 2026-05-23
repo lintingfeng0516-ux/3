@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import yfinance as yf
 
 st.set_page_config(page_title="專業財報分析系統", layout="wide")
-st.title("📊 財報自動化解析系統 ")
+st.title("📊 財報自動化解析系統 (數據完全修復版)")
 
 with st.sidebar:
     st.header("1. 數據設定")
@@ -125,4 +125,11 @@ if analyze_btn:
                     yaxis=dict(title="數值", nticks=10, showgrid=True, gridcolor='lightgrey'),
                     hovermode="x unified",
                     height=550,
-                    legend=dict(orient
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                )
+                st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.error("❌ 找不到任何數據，請重新執行。")
+
+    except Exception as e:
+        st.error(f"系統錯誤: {e}")
