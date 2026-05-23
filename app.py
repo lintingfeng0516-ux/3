@@ -19,34 +19,37 @@ with st.sidebar:
     
     analyze_btn = st.button("🚀 執行全面分析")
 
-# --- 核心邏輯：避開『其他』，抓取『合計』 ---
-def strict_get(d, target_keywords, exclude_kw=['其他', '非流動']):
+# --- 核心邏輯修正：統一參數名稱為 exclude_kw ---
+def strict_get(d, target_keywords, exclude_kw=None):
+    if exclude_kw is None:
+        exclude_kw = ['其他', '非流動']
+    
     best_val = 0
     max_num = 0
     for k, v in d.items():
         k_clean = str(k).replace(" ", "").replace("　", "")
-        # 如果包含排除關鍵字，直接跳過
+        # 排除邏輯
         if any(ex in k_clean for ex in exclude_kw):
             continue
-        # 必須包含所有目標關鍵字
+        # 匹配邏輯
         if all(tk in k_clean for tk in target_keywords):
-            # 在符合條件的項目中，取數字最大的 (合計項通常最大)
-            if isinstance(v, (int, float)) and v > max_num:
-                max_num = v
+            if isinstance(v, (int, float)) and abs(v) > max_num:
+                max_num = abs(v)
                 best_val = v
     return best_val
 
 def calc_all(d, source='excel'):
     r = {}
     if source == 'excel':
+        # 修正後的呼叫方式
         rev = strict_get(d, ['營業收入', '合計'], exclude_kw=['其他']) or strict_get(d, ['營業收入'])
         cost = strict_get(d, ['營業成本', '合計'], exclude_kw=['其他']) or strict_get(d, ['營業成本'])
-        net = strict_get(d, ['本期淨利'], exclude_keywords=['綜合'])
+        net = strict_get(d, ['本期淨利'], exclude_kw=['綜合', '總額'])
         ebit = strict_get(d, ['營業利益'])
         int_exp = strict_get(d, ['財務成本']) or strict_get(d, ['利息支出'])
         
-        ca = strict_get(d, ['流動資產', '合計']) # 精準抓取『流動資產合計』
-        cl = strict_get(d, ['流動負債', '合計']) # 精準抓取『流動負債合計』
+        ca = strict_get(d, ['流動資產', '合計'], exclude_kw=['其他']) or strict_get(d, ['流動資產'])
+        cl = strict_get(d, ['流動負債', '合計'], exclude_kw=['其他']) or strict_get(d, ['流動負債'])
         inv = strict_get(d, ['存貨'])
         pre = strict_get(d, ['預付款項'])
         ta = strict_get(d, ['資產總額']) or strict_get(d, ['資產', '合計'], exclude_kw=['流動'])
@@ -80,7 +83,7 @@ if analyze_btn:
         final_list = []
         up_debug = {}
 
-        # 1. 抓取 Yahoo 數據 (僅保留最近 4 年)
+        # 1. 抓取 Yahoo 數據 (四年)
         tk = yf.Ticker(stock_id)
         # 獲取年度數據
         hist_df = pd.concat([tk.income_stmt, tk.balance_sheet], axis=0).transpose()
@@ -100,6 +103,7 @@ if analyze_btn:
                     items = row.dropna().tolist()
                     if len(items) >= 2:
                         label = str(items[0]).strip()
+                        # 找金額 (大於 1000)
                         nums = [i for i in items[1:] if isinstance(i, (int, float)) and abs(i) > 1000]
                         if nums: u_dict[label] = nums[0]
             
@@ -118,7 +122,7 @@ if analyze_btn:
                 with st.expander("🔍 上傳檔案數據抓取校正 (診斷工具)"):
                     st.json(up_debug)
 
-            # 4. 繪圖 (僅顯示數字年份)
+            # 4. 繪圖 (僅數字年份)
             plot_df = df_final[df_final.index.str.isdigit()].sort_index()
             if not plot_df.empty and selected_metrics:
                 st.subheader("📊 財務指標趨勢圖 (最近四年)")
