@@ -40,7 +40,6 @@ def strict_get(d, target_keywords, exclude_kw=None):
     return best_val
 
 def calc_all(d, source='excel'):
-    # 提取 11 項原始數據
     if source == 'excel':
         rev = strict_get(d, ['營業收入'], exclude_kw=['其他'])
         cost = strict_get(d, ['營業成本'], exclude_kw=['其他'])
@@ -54,20 +53,23 @@ def calc_all(d, source='excel'):
         ta = strict_get(d, ['資產總額']) or strict_get(d, ['資產合計'], exclude_kw=['流動'])
         tl = strict_get(d, ['負債總額']) or strict_get(d, ['負債合計'], exclude_kw=['流動'])
     else:
-        # Yahoo Finance 模式
-        rev = d.get('Total Revenue', 0)
-        cost = d.get('Cost Of Revenue', 0)
-        net = d.get('Net Income', 0)
-        ebit = d.get('Operating Income', 0) or d.get('EBIT', 0)
-        int_exp = d.get('Interest Expense', 0)
-        ca = d.get('Total Current Assets', 0)
-        cl = d.get('Total Current Liabilities', 0)
-        inv = d.get('Inventory', 0)
-        pre = d.get('Prepayments', 0)
-        ta = d.get('Total Assets', 0)
-        tl = d.get('Total Liabilities Net Minority Interest', 0)
+        # Yahoo Finance 模式 (修復標籤對齊)
+        def yget(keys):
+            for k in keys:
+                if k in d: return d[k]
+            return 0
+        rev = yget(['Total Revenue', 'Operating Revenue'])
+        cost = yget(['Cost Of Revenue'])
+        net = yget(['Net Income Common Stockholders', 'Net Income'])
+        ebit = yget(['Operating Income', 'EBIT'])
+        int_exp = yget(['Interest Expense', 'Interest Expense Non Operating'])
+        ca = yget(['Current Assets', 'Total Current Assets'])
+        cl = yget(['Current Liabilities', 'Total Current Liabilities'])
+        inv = yget(['Inventory'])
+        pre = yget(['Prepayments', 'Prepaid Assets'])
+        ta = yget(['Total Assets'])
+        tl = yget(['Total Liabilities Net Minority Interest', 'Total Liabilities'])
 
-    # 計算 6 大指標
     r = {}
     r['毛利率'] = (rev - cost) / rev if rev > 0 else 0
     r['淨利率'] = net / rev if rev > 0 else 0
@@ -76,7 +78,6 @@ def calc_all(d, source='excel'):
     r['負債比率'] = tl / ta if ta > 0 else 0
     r['利息保障倍數'] = ebit / int_exp if int_exp > 0 else 0
     
-    # 完整 11 項診斷數據
     debug = {
         "營業收入": rev, "營業成本": cost, "本期淨利": net,
         "營業利益(EBIT)": ebit, "利息/財務成本": int_exp,
@@ -90,11 +91,14 @@ if analyze_btn:
         final_list = []
         up_debug = {}
 
-        # 1. 抓取 Yahoo 數據 (四年)
+        # 1. 抓取 Yahoo 數據 (最近 4 年)
         tk = yf.Ticker(stock_id)
-        hist_df = pd.concat([tk.income_stmt, tk.balance_sheet], axis=0).transpose()
-        if not hist_df.empty:
-            for date, row in hist_df.head(4).iterrows():
+        # 這裡分開獲取以防合併失敗
+        is_df = tk.income_stmt
+        bs_df = tk.balance_sheet
+        if not is_df.empty and not bs_df.empty:
+            combined_hist = pd.concat([is_df, bs_df], axis=0).transpose()
+            for date, row in combined_hist.head(4).iterrows():
                 res, _ = calc_all(row.to_dict(), source='yahoo')
                 if any(v != 0 for v in res.values()):
                     res['日期'] = date.strftime('%Y')
@@ -104,14 +108,13 @@ if analyze_btn:
         if uploaded_files:
             u_dict = {}
             for f in uploaded_files:
-                u_df = pd.read_excel(f)
-                for _, row in u_df.iterrows():
-                    items = row.dropna().tolist()
+                temp_df = pd.read_excel(f)
+                for _, row_data in temp_df.iterrows():
+                    items = row_data.dropna().tolist()
                     if len(items) >= 2:
                         label = str(items[0]).strip()
                         nums = [i for i in items[1:] if isinstance(i, (int, float)) and abs(i) > 1000]
                         if nums: u_dict[label] = nums[0]
-            
             if u_dict:
                 up_res, up_debug = calc_all(u_dict, source='excel')
                 up_res['日期'] = "📁 上傳年度"
@@ -127,7 +130,7 @@ if analyze_btn:
                 with st.expander("🔍 上傳檔案數據抓取校正 (11項完整診斷工具)"):
                     st.json(up_debug)
 
-            # 4. 繪圖 (最近四年)
+            # 4. 繪圖
             plot_df = df_final[df_final.index.str.isdigit()].sort_index()
             if not plot_df.empty and selected_metrics:
                 st.subheader("📊 財務指標趨勢圖")
